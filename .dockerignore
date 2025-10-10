@@ -1,0 +1,29 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pytest_cache
+
+# Environments
+.venv
+.env
+.env.*
+
+# VCS
+.git
+.gitignore
+
+# OS
+.DS_Store
+
+# Node/Playwright caches if any
+node_modules
+playwright/.cache
+
+# Build/Editor
+dist
+build
+*.log
+
+
