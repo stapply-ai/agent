@@ -2,6 +2,8 @@
 
 This codebase contains the code to run an eval with the agent and the server that powers the cloud platform of Stapply.
 
+To run: `uv run python server/main.py`.
+
 ## Setup
 
 ### Prerequisites
