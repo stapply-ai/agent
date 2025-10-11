@@ -62,4 +62,3 @@ def cleanup_resume(file_path: str):
             print(f"🗑️  Resume file cleaned up: {file_path}")
     except Exception as e:
         print(f"⚠️  Failed to cleanup resume file: {str(e)}")
-
