@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - ./server/uploads:/app/server/uploads
+    # Increase memory limits for browser automation
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    # Add shared memory for browser
+    shm_size: 2gb
