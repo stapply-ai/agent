@@ -5,8 +5,8 @@ Apply endpoint for job application agent.
 from datetime import datetime
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, status
-from utils.profile import default_profile
-from utils.browser import start_agent
+from ..utils.profile import default_profile
+from ..utils.browser import start_agent
 from .models import ApplyRequest
 
 router = APIRouter()
@@ -23,23 +23,25 @@ async def apply(request: ApplyRequest) -> Dict[str, Any]:
     """
     Start the async agent run to perform the application flow.
 
-    Returns a simple status payload after the agent completes.
+    Returns the session_id immediately and runs the agent in the background.
+    If webhook_url is provided, it will be called when the agent completes.
     """
     try:
-        profile_data: Dict[str, Any] = request.profile or default_profile 
+        profile_data: Dict[str, Any] = request.profile or default_profile
 
-        await start_agent(
+        session_id, browser_live_view_url = await start_agent(
             user_id=request.user_id,
             url=request.url,
             profile=profile_data,
             resume_url=request.resume_url,
             instructions=request.instructions,
             secrets=request.secrets,
+            webhook_url=request.webhook_url,
         )
 
         return {
-            "status": "completed",
-            "timestamp": datetime.utcnow(),
+            "session_id": session_id,
+            "live_url": browser_live_view_url,
         }
     except Exception as e:
         raise HTTPException(

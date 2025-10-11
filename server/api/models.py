@@ -4,7 +4,7 @@ Pydantic models for type safety.
 
 from datetime import datetime
 from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class HealthResponse(BaseModel):
@@ -14,6 +14,10 @@ class HealthResponse(BaseModel):
     timestamp: datetime = Field(..., description="Current timestamp")
     version: str = Field(..., description="API version")
 
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, value: datetime) -> str:
+        return value.isoformat()
+
 
 class ErrorResponse(BaseModel):
     """Error response model."""
@@ -21,6 +25,10 @@ class ErrorResponse(BaseModel):
     error: str = Field(..., description="Error message")
     detail: str = Field(..., description="Error details")
     timestamp: datetime = Field(..., description="Error timestamp")
+
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class ApplyRequest(BaseModel):
@@ -37,4 +45,8 @@ class ApplyRequest(BaseModel):
     )
     secrets: Optional[Dict[str, Any]] = Field(
         default=None, description="Sensitive data to pass to the agent"
+    )
+    webhook_url: Optional[str] = Field(
+        default="http://localhost:3000/webhook/applications",
+        description="Webhook URL to notify when agent completes",
     )
