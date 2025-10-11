@@ -1,37 +1,58 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.11-slim AS base
+# Stage 1: Base system dependencies (rarely changes)
+FROM python:3.12-slim AS system-deps
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    UVICORN_WORKERS=2 \
-    PORT=8080
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-# System deps for Playwright/Chromium if needed later; keep minimal by default
+# System deps for Playwright/Chromium (cached separately)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     tini \
+    # Browser dependencies
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libxss1 \
+    libasound2 \
     && rm -rf /var/lib/apt/lists/*
+
+# Stage 2: Python dependencies (changes less frequently)
+FROM system-deps AS python-deps
 
 WORKDIR /app
 
 # Copy only dependency files first for better caching
 COPY pyproject.toml README.md /app/
 
-# Install uv (fast Python installer)
+# Install uv (fast Python installer) and dependencies
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    /root/.cargo/bin/uv venv && \
-    . /app/.venv/bin/activate || true
+    /root/.local/bin/uv sync --no-dev
 
-# Install runtime dependencies
-RUN /root/.cargo/bin/uv sync --no-dev
+# Install Playwright browsers (cached with Python deps)
+RUN /root/.local/bin/uv run playwright install chromium
 
-# Copy the application code
+# Stage 3: Application (changes most frequently)
+FROM python-deps AS app
+
+ENV UVICORN_WORKERS=2 \
+    PORT=8080
+
+# Copy the application code (this invalidates cache when code changes)
 COPY server /app/server
-COPY sample.py /app/sample.py
 
 # Create a non-root user
 RUN useradd -m app && chown -R app:app /app
