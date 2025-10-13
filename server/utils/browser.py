@@ -4,6 +4,7 @@ import hmac
 import hashlib
 import time
 from typing import Dict, Any, Optional
+import uuid
 
 import aiofiles
 import aiohttp
@@ -13,14 +14,91 @@ from browser_use import Agent, BrowserSession
 from browser_use.llm import ChatBrowserUse
 from browser_use.tokens.service import TokenCost
 
-from kernel import AsyncKernel, Kernel
-
 from .profile import default_profile
 from .tools.playwright import playwright_tools, connect_playwright_to_cdp
 from .resume import download_resume, cleanup_resume
 from .prompt import default_prompt
 
+import subprocess
+import tempfile
+
 load_dotenv()
+
+
+async def start_chrome_with_debug_port(port: int = 9222):
+    """
+    Start Chrome with remote debugging enabled.
+    Returns the Chrome process.
+    """
+    # Create temporary directory for Chrome user data
+    user_data_dir = tempfile.mkdtemp(prefix="chrome_cdp_")
+
+    # Chrome launch command
+    chrome_paths = [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",  # macOS
+        "/usr/bin/google-chrome",  # Linux
+        "/usr/bin/chromium-browser",  # Linux Chromium
+        "chrome",  # Windows/PATH
+        "chromium",  # Generic
+    ]
+
+    chrome_exe = None
+    for path in chrome_paths:
+        if os.path.exists(path) or path in ["chrome", "chromium"]:
+            try:
+                # Test if executable works
+                test_proc = await asyncio.create_subprocess_exec(
+                    path,
+                    "--version",
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                await test_proc.wait()
+                chrome_exe = path
+                break
+            except Exception:
+                continue
+
+    if not chrome_exe:
+        raise RuntimeError("❌ Chrome not found. Please install Chrome or Chromium.")
+
+    # Chrome command arguments
+    cmd = [
+        chrome_exe,
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={user_data_dir}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-extensions",
+        "about:blank",  # Start with blank page
+    ]
+
+    # Start Chrome process
+    process = await asyncio.create_subprocess_exec(
+        *cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+
+    # Wait for Chrome to start and CDP to be ready
+    cdp_ready = False
+    for _ in range(20):  # 20 second timeout
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"http://localhost:{port}/json/version",
+                    timeout=aiohttp.ClientTimeout(total=1),
+                ) as response:
+                    if response.status == 200:
+                        cdp_ready = True
+                        break
+        except Exception:
+            pass
+        await asyncio.sleep(1)
+
+    if not cdp_ready:
+        process.terminate()
+        raise RuntimeError("❌ Chrome failed to start with CDP")
+
+    return process
 
 
 def generate_webhook_signature(payload: str, secret: str) -> str:
@@ -47,7 +125,6 @@ def generate_webhook_signature(payload: str, secret: str) -> str:
 async def send_webhook(
     webhook_url: str,
     user_id: str,
-    session_id: str,
     success: bool,
     metadata: Dict[str, Any] = None,
 ):
@@ -65,7 +142,6 @@ async def send_webhook(
         return
 
     payload = {
-        "session_id": session_id,
         "success": success,
         "user_id": user_id,
         "metadata": metadata or {},
@@ -136,19 +212,9 @@ async def start_agent(
     if not resume_url:
         raise ValueError("Resume URL or file path is required")
 
-    # Initialize Kernel client and create browser session
-    client = Kernel(api_key=os.environ["KERNEL_API_KEY"])
-    kernel_browser = client.browsers.create()
-    session_id = kernel_browser.session_id
-
-    print(f"🎯 Created browser session: {session_id}")
-    print(f"Kernel browser URL: {kernel_browser.browser_live_view_url}")
-
     # Start the agent process in the background
     asyncio.create_task(
         _run_agent_background(
-            client,
-            kernel_browser,
             user_id,
             url,
             profile,
@@ -156,17 +222,13 @@ async def start_agent(
             instructions,
             secrets,
             webhook_url,
-            session_id,
         )
     )
 
-    # Return session_id immediately
-    return session_id, kernel_browser.browser_live_view_url
+    return None
 
 
 async def _run_agent_background(
-    client: Kernel,
-    kernel_browser,
     user_id: str,
     url: str,
     profile: dict,
@@ -174,7 +236,6 @@ async def _run_agent_background(
     instructions: str,
     secrets: dict,
     webhook_url: Optional[str],
-    session_id: str,
 ):
     """
     Run the agent in the background and send webhook when complete.
@@ -189,17 +250,18 @@ async def _run_agent_background(
 
         prompt = default_prompt(url, profile, file_path, instructions)
 
+        chrome_process = await start_chrome_with_debug_port()
+        cdp_url = "http://localhost:9222"
+
         # Connect Playwright to the browser
-        playwright_connected = await connect_playwright_to_cdp(
-            kernel_browser.cdp_ws_url
-        )
+        playwright_connected = await connect_playwright_to_cdp(cdp_url)
         if not playwright_connected:
             raise Exception(
                 "Failed to connect Playwright to browser. File uploads will not work."
             )
 
         browser_session = BrowserSession(
-            cdp_url=kernel_browser.cdp_ws_url,
+            cdp_url=cdp_url,
             headless=False,
             # highlight_elements=True,
             # dom_highlight_elements=True,
@@ -242,11 +304,6 @@ async def _run_agent_background(
 
         print(f"✅ Integration demo completed! Result: {result}")
 
-        # Send webhook notification
-        await send_webhook(
-            webhook_url, user_id, session_id, result.is_successful(), metadata
-        )
-
     except Exception as e:
         print(f"❌ Error: {e}")
 
@@ -256,17 +313,10 @@ async def _run_agent_background(
             "user_id": user_id,
             "url": url,
         }
-        await send_webhook(webhook_url, user_id, session_id, False, error_metadata)
-        raise
+        await send_webhook(webhook_url, user_id, False, error_metadata)
+        return
 
     finally:
-        if client and kernel_browser:
-            client.browsers.delete_by_id(kernel_browser.session_id)
-            # if replay:
-            #     client.browsers.replays.stop(
-            #         replay_id=replay.replay_id, id=kernel_browser.session_id
-            #     )
-
         # Close playwright browser
         try:
             from .tools.playwright import playwright_browser, playwright_page
@@ -279,6 +329,16 @@ async def _run_agent_background(
 
                 playwright_module.playwright_browser = None
                 playwright_module.playwright_page = None
+
+            if playwright_browser:
+                await playwright_browser.close()
+
+            if chrome_process:
+                chrome_process.terminate()
+                try:
+                    await asyncio.wait_for(chrome_process.wait(), 5)
+                except TimeoutError:
+                    chrome_process.kill()
         except Exception as cleanup_error:
             print(f"⚠️  Error closing playwright browser: {cleanup_error}")
 
@@ -286,31 +346,6 @@ async def _run_agent_background(
             cleanup_resume(file_path)
 
         print("✅ Cleanup complete")
-
-
-async def download_replay(client: AsyncKernel, kernel_browser):
-    replays = client.browsers.replays.list(kernel_browser.session_id)
-
-    for replay in replays:
-        print(f"Replay ID: {replay.replay_id}")
-        print(f"View URL: {replay.replay_view_url}")
-
-        # Download the mp4 file
-        video_data = client.browsers.replays.download(
-            replay_id=replay.replay_id, id=kernel_browser.session_id
-        )
-
-        # Get the content as bytes
-        content = video_data.read()
-
-        if not os.path.exists("replays"):
-            os.makedirs("replays")
-
-        filename = f"replays/replay-{replay.replay_id}-{kernel_browser.session_id}.mp4"
-        async with aiofiles.open(filename, "wb") as f:
-            await f.write(content)
-
-        print(f"Saved replay to {filename}")
 
 
 if __name__ == "__main__":
