@@ -99,11 +99,16 @@ async def send_webhook(
                 if response.status == 200:
                     print(f"✅ Webhook sent successfully to {webhook_url}")
                 else:
+                    response_text = await response.text()
                     print(
-                        f"⚠️ Webhook failed with status {response.status}: {await response.text()}"
+                        f"⚠️ Webhook failed with status {response.status}: {response_text[:200]}..."
                     )
+    except aiohttp.ClientConnectorError as e:
+        print(f"⚠️ Could not connect to webhook URL {webhook_url}: {e}")
+    except aiohttp.ClientTimeout as e:
+        print(f"⚠️ Webhook request timed out for {webhook_url}: {e}")
     except Exception as e:
-        print(f"❌ Error sending webhook: {e}")
+        print(f"❌ Error sending webhook to {webhook_url}: {e}")
 
 
 async def start_agent(
@@ -221,16 +226,17 @@ async def _run_agent_background(
 
         # Prepare metadata for webhook
         metadata = {
-            "usage_summary": usage_summary,
             "total_prompt_tokens": usage_summary.total_prompt_tokens,
             "total_prompt_cached_tokens": usage_summary.total_prompt_cached_tokens,
             "total_completion_tokens": usage_summary.total_completion_tokens,
             "total_tokens": usage_summary.total_tokens,
-            "total_cost": usage_summary.total_cost,
+            "total_cost": float(usage_summary.total_cost)
+            if usage_summary.total_cost
+            else 0.0,
             "user_id": user_id,
             "url": url,
             "duration_seconds": result.total_duration_seconds,
-            "final_result": result.final_result,
+            "final_result": str(result.final_result),
             "success": result.is_successful(),
         }
 
@@ -263,11 +269,14 @@ async def _run_agent_background(
 
         # Close playwright browser
         try:
-            import utils.tools.playwright as playwright_module
+            from .tools.playwright import playwright_browser, playwright_page
 
-            if playwright_module.playwright_browser:
+            if playwright_browser:
                 print("🔍 Closing playwright browser")
-                await playwright_module.playwright_browser.close()
+                await playwright_browser.close()
+                # Reset global variables
+                import server.utils.tools.playwright as playwright_module
+
                 playwright_module.playwright_browser = None
                 playwright_module.playwright_page = None
         except Exception as cleanup_error:

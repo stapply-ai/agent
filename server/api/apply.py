@@ -11,7 +11,6 @@ from .models import ApplyRequest
 
 router = APIRouter()
 
-
 @router.post(
     "/apply",
     status_code=status.HTTP_202_ACCEPTED,
