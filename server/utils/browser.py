@@ -225,7 +225,7 @@ async def start_agent(
         )
     )
 
-    return None
+    return str(uuid.uuid4()), "No live URL available (local browser instances)"
 
 
 async def _run_agent_background(
