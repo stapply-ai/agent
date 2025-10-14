@@ -214,3 +214,9 @@ __marimo__/
 /server/resumes/
 /server/uploads/
 /server/downloads/
+
+.vscode/
+.idea/
+.cursorignore
+.cursorindexingignore
+.cursor/
