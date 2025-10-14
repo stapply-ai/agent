@@ -2,16 +2,17 @@ import asyncio
 import os
 import hmac
 import hashlib
+import shutil
+import socket
 import time
+import urllib.parse
 from typing import Dict, Any, Optional
 import uuid
 
-import aiofiles
 import aiohttp
 from dotenv import load_dotenv
 
-from browser_use import Agent, BrowserSession
-from browser_use.llm import ChatBrowserUse
+from browser_use import Agent, BrowserSession, ChatGoogle
 from browser_use.tokens.service import TokenCost
 
 from .profile import default_profile
@@ -19,17 +20,95 @@ from .tools.playwright import playwright_tools, connect_playwright_to_cdp
 from .resume import download_resume, cleanup_resume
 from .prompt import default_prompt
 
-import subprocess
 import tempfile
+import subprocess
 
 load_dotenv()
 
 
-async def start_chrome_with_debug_port(port: int = 9222):
+def _env_flag(value: Optional[str]) -> bool:
+    """
+    Normalise environment boolean strings.
+    """
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str) -> Optional[int]:
+    """
+    Read an integer from the environment if available.
+    """
+    value = os.getenv(name)
+    if value is None:
+        return None
+
+    try:
+        return int(value)
+    except ValueError:
+        print(f"⚠️  Invalid value for {name}={value!r}, ignoring.")
+        return None
+
+
+def _env_float(name: str) -> Optional[float]:
+    """
+    Read a float from the environment if available.
+    """
+    value = os.getenv(name)
+    if value is None:
+        return None
+
+    try:
+        return float(value)
+    except ValueError:
+        print(f"⚠️  Invalid value for {name}={value!r}, ignoring.")
+        return None
+
+
+CHROME_DEBUG_ADDRESS = os.getenv("CHROME_DEBUG_ADDRESS", "127.0.0.1")
+LIVE_VIEW_HOST = os.getenv("LIVE_VIEW_HOST") or CHROME_DEBUG_ADDRESS
+if LIVE_VIEW_HOST in ("0.0.0.0", "", None):
+    LIVE_VIEW_HOST = "127.0.0.1"
+
+CHROME_HEADLESS = _env_flag(os.getenv("CHROME_HEADLESS"))
+CHROME_HEADLESS_WIDTH = _env_int("CHROME_HEADLESS_WIDTH")
+CHROME_HEADLESS_HEIGHT = _env_int("CHROME_HEADLESS_HEIGHT")
+LIVE_VIEW_WIDTH = _env_int("LIVE_VIEW_WIDTH") or 1440
+LIVE_VIEW_HEIGHT = _env_int("LIVE_VIEW_HEIGHT") or 900
+LIVE_VIEW_SCALE = _env_float("LIVE_VIEW_SCALE") or 1.0
+
+
+def _find_free_port(bind_host: str = "127.0.0.1") -> int:
+    """
+    Ask the OS for a free TCP port.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((bind_host, 0))
+        return sock.getsockname()[1]
+
+
+def _debug_connect_host(debug_address: str) -> str:
+    """
+    Hostname used by local processes to talk to Chrome.
+    """
+    if debug_address in ("0.0.0.0", "", None):
+        return "127.0.0.1"
+    if debug_address == "localhost":
+        return "127.0.0.1"
+    return debug_address
+
+
+async def start_chrome_with_debug_port(
+    port: Optional[int] = None, debug_address: str = CHROME_DEBUG_ADDRESS
+):
     """
     Start Chrome with remote debugging enabled.
-    Returns the Chrome process.
+    Returns the Chrome process, port, and user data directory.
     """
+    if port is None:
+        bind_host = "127.0.0.1" if debug_address == "0.0.0.0" else debug_address
+        port = _find_free_port(bind_host)
+
     # Create temporary directory for Chrome user data
     user_data_dir = tempfile.mkdtemp(prefix="chrome_cdp_")
 
@@ -67,11 +146,36 @@ async def start_chrome_with_debug_port(port: int = 9222):
         chrome_exe,
         f"--remote-debugging-port={port}",
         f"--user-data-dir={user_data_dir}",
+        f"--remote-debugging-address={debug_address}",
+        "--remote-allow-origins=*",
         "--no-first-run",
         "--no-default-browser-check",
         "--disable-extensions",
         "about:blank",  # Start with blank page
     ]
+
+    if CHROME_HEADLESS:
+        window_size_flag = None
+        if CHROME_HEADLESS_WIDTH and CHROME_HEADLESS_HEIGHT:
+            window_size_flag = (
+                f"--window-size={CHROME_HEADLESS_WIDTH},{CHROME_HEADLESS_HEIGHT}"
+            )
+        elif CHROME_HEADLESS_WIDTH or CHROME_HEADLESS_HEIGHT:
+            print(
+                "⚠️  Both CHROME_HEADLESS_WIDTH and CHROME_HEADLESS_HEIGHT must be set "
+                "to override the window size."
+            )
+
+        cmd.extend(
+            [
+                "--headless=new",
+                "--disable-gpu",
+                "--hide-scrollbars",
+                "--mute-audio",
+            ]
+        )
+        if window_size_flag:
+            cmd.append(window_size_flag)
 
     # Start Chrome process
     process = await asyncio.create_subprocess_exec(
@@ -80,11 +184,13 @@ async def start_chrome_with_debug_port(port: int = 9222):
 
     # Wait for Chrome to start and CDP to be ready
     cdp_ready = False
+    connect_host = _debug_connect_host(debug_address)
+
     for _ in range(20):  # 20 second timeout
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    f"http://localhost:{port}/json/version",
+                    f"http://{connect_host}:{port}/json/version",
                     timeout=aiohttp.ClientTimeout(total=1),
                 ) as response:
                     if response.status == 200:
@@ -96,9 +202,166 @@ async def start_chrome_with_debug_port(port: int = 9222):
 
     if not cdp_ready:
         process.terminate()
+        try:
+            await process.wait()
+        except Exception:
+            pass
         raise RuntimeError("❌ Chrome failed to start with CDP")
 
-    return process
+    mode = "headless" if CHROME_HEADLESS else "headed"
+    print(f"✅ Chrome started ({mode}) with CDP on {debug_address}:{port}")
+
+    return process, port, user_data_dir, connect_host
+
+
+async def _apply_live_viewport_size():
+    """
+    Ensure the DevTools live view uses the desired viewport dimensions.
+    """
+    if not (LIVE_VIEW_WIDTH and LIVE_VIEW_HEIGHT):
+        return
+
+    try:
+        from .tools.playwright import playwright_page
+
+        if not playwright_page:
+            return
+
+        width = int(LIVE_VIEW_WIDTH)
+        height = int(LIVE_VIEW_HEIGHT)
+        await playwright_page.set_viewport_size(
+            {"width": int(LIVE_VIEW_WIDTH), "height": int(LIVE_VIEW_HEIGHT)}
+        )
+        try:
+            cdp_session = await playwright_page.context.new_cdp_session(
+                playwright_page
+            )
+            await cdp_session.send(
+                "Emulation.setDeviceMetricsOverride",
+                {
+                    "width": width,
+                    "height": height,
+                    "deviceScaleFactor": LIVE_VIEW_SCALE,
+                    "mobile": False,
+                    "screenWidth": width,
+                    "screenHeight": height,
+                },
+            )
+        except Exception:
+            # Some Chromium builds may not support this session call; continue anyway.
+            pass
+
+        await playwright_page.evaluate("window.dispatchEvent(new Event('resize'));")
+        print(
+            f"🖥️ Live viewport set to {LIVE_VIEW_WIDTH}x{LIVE_VIEW_HEIGHT} "
+            f"(scale {LIVE_VIEW_SCALE})"
+        )
+    except Exception as viewport_error:
+        print(f"⚠️  Unable to set live viewport size: {viewport_error}")
+
+
+def _rewrite_ws_value(value: str, host: str, port: int) -> str:
+    """
+    Adjust websocket debugger target to use the public host.
+    """
+    if host in {"127.0.0.1", "localhost"}:
+        return value
+
+    if value.startswith(("ws://", "wss://")):
+        parsed = urllib.parse.urlparse(value)
+        current_port = parsed.port or port
+        new_netloc = f"{host}:{current_port}"
+        return urllib.parse.urlunparse(parsed._replace(netloc=new_netloc))
+
+    if "://" not in value:
+        if "/" in value:
+            _, remainder = value.split("/", 1)
+            return f"{host}:{port}/{remainder}"
+        return f"{host}:{port}"
+
+    return value
+
+
+def _rewrite_devtools_url(
+    url: str, public_host: str, port: int, connect_host: str
+) -> str:
+    """
+    Rewrites a DevTools URL to use the configured public host when needed.
+    """
+    if not url:
+        return url
+
+    if url.startswith("/"):
+        absolute_url = f"http://{connect_host}:{port}{url}"
+    elif "://" not in url:
+        absolute_url = f"http://{connect_host}:{port}/{url.lstrip('/')}"
+    else:
+        absolute_url = url
+
+    if public_host in {"127.0.0.1", "localhost"}:
+        return absolute_url
+
+    parsed = urllib.parse.urlparse(absolute_url)
+    query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+    ws_values = query.get("ws")
+
+    if ws_values:
+        query["ws"] = [_rewrite_ws_value(ws_values[0], public_host, port)]
+
+    new_query = urllib.parse.urlencode(query, doseq=True)
+
+    netloc = parsed.netloc
+    if netloc in {connect_host, f"{connect_host}:{port}"}:
+        netloc = f"{public_host}:{port}"
+
+    return urllib.parse.urlunparse(parsed._replace(netloc=netloc, query=new_query))
+
+
+async def resolve_live_view_url(
+    port: int, connect_host: str, public_host: str = LIVE_VIEW_HOST
+) -> Optional[str]:
+    """
+    Try to build a DevTools frontend URL that can render the live browser view.
+    Prefers the hosted compat URL when available so it works in any browser.
+    """
+    base_url = f"http://{connect_host}:{port}"
+    endpoints = (f"{base_url}/json/list", f"{base_url}/json")
+    last_error: Optional[Exception] = None
+
+    timeout = aiohttp.ClientTimeout(total=2)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        for attempt in range(1, 8):
+            for endpoint in endpoints:
+                try:
+                    async with session.get(endpoint) as response:
+                        if response.status != 200:
+                            continue
+                        targets = await response.json()
+
+                    for target in targets:
+                        if target.get("type") != "page":
+                            continue
+
+                        compat_url = target.get("devtoolsFrontendUrlCompat")
+                        if compat_url:
+                            return _rewrite_devtools_url(
+                                compat_url, public_host, port, connect_host
+                            )
+
+                        frontend_url = target.get("devtoolsFrontendUrl")
+                        if frontend_url:
+                            return _rewrite_devtools_url(
+                                frontend_url, public_host, port, connect_host
+                            )
+                except Exception as exc:
+                    last_error = exc
+            await asyncio.sleep(0.5 * attempt)
+
+    if last_error:
+        print(f"⚠️  Unable to resolve DevTools live view URL: {last_error}")
+
+    return None
 
 
 def generate_webhook_signature(payload: str, secret: str) -> str:
@@ -195,7 +458,7 @@ async def start_agent(
     instructions: str = "",
     secrets: dict = {},
     webhook_url: Optional[str] = None,
-) -> str:
+) -> tuple[str, str]:
     """
     Main function demonstrating Browser-Use + Playwright integration with custom actions.
     Returns session_id immediately and runs agent in background with webhook notification.
@@ -212,6 +475,24 @@ async def start_agent(
     if not resume_url:
         raise ValueError("Resume URL or file path is required")
 
+    chrome_process, chrome_port, user_data_dir, connect_host = await start_chrome_with_debug_port()
+    cdp_url = f"http://{connect_host}:{chrome_port}"
+    public_cdp_url = f"http://{LIVE_VIEW_HOST}:{chrome_port}"
+
+    live_view_url = await resolve_live_view_url(
+        chrome_port, connect_host, LIVE_VIEW_HOST
+    )
+    if live_view_url:
+        print(f"🔗 Live browser view available at: {live_view_url}")
+    else:
+        live_view_url = f"{public_cdp_url}/json"
+        print(
+            "⚠️  Could not determine DevTools frontend URL. "
+            f"Access the raw CDP targets at {live_view_url}"
+        )
+
+    session_id = str(uuid.uuid4())
+
     # Start the agent process in the background
     asyncio.create_task(
         _run_agent_background(
@@ -222,10 +503,13 @@ async def start_agent(
             instructions,
             secrets,
             webhook_url,
+            cdp_url,
+            chrome_process,
+            user_data_dir,
         )
     )
 
-    return str(uuid.uuid4()), "No live URL available (local browser instances)"
+    return session_id, live_view_url
 
 
 async def _run_agent_background(
@@ -236,12 +520,14 @@ async def _run_agent_background(
     instructions: str,
     secrets: dict,
     webhook_url: Optional[str],
+    cdp_url: str,
+    chrome_process: asyncio.subprocess.Process,
+    user_data_dir: str,
 ):
     """
     Run the agent in the background and send webhook when complete.
     """
     file_path = None
-    replay = None
 
     try:
         if resume_url:
@@ -250,9 +536,6 @@ async def _run_agent_background(
 
         prompt = default_prompt(url, profile, file_path, instructions)
 
-        chrome_process = await start_chrome_with_debug_port()
-        cdp_url = "http://localhost:9222"
-
         # Connect Playwright to the browser
         playwright_connected = await connect_playwright_to_cdp(cdp_url)
         if not playwright_connected:
@@ -260,15 +543,18 @@ async def _run_agent_background(
                 "Failed to connect Playwright to browser. File uploads will not work."
             )
 
+        await _apply_live_viewport_size()
+
         browser_session = BrowserSession(
             cdp_url=cdp_url,
-            headless=False,
+            headless=CHROME_HEADLESS,
             # highlight_elements=True,
             # dom_highlight_elements=True,
         )
 
         tc = TokenCost(include_cost=True)
-        llm = ChatBrowserUse()
+        # llm = ChatBrowserUse()
+        llm = ChatGoogle(model="gemini-flash-latest")
         tc.register_llm(llm)
 
         agent = Agent(
@@ -302,6 +588,15 @@ async def _run_agent_background(
             "success": result.is_successful(),
         }
 
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        import json
+
+        metadata["timestamp"] = timestamp
+
+        # Write the result to a file
+        with open(f"result_metadata_{timestamp}.json", "w") as f:
+            json.dump(metadata, f)
+
         print(f"✅ Integration demo completed! Result: {result}")
 
     except Exception as e:
@@ -330,15 +625,15 @@ async def _run_agent_background(
                 playwright_module.playwright_browser = None
                 playwright_module.playwright_page = None
 
-            if playwright_browser:
-                await playwright_browser.close()
-
             if chrome_process:
                 chrome_process.terminate()
                 try:
                     await asyncio.wait_for(chrome_process.wait(), 5)
                 except TimeoutError:
                     chrome_process.kill()
+
+            if user_data_dir and os.path.exists(user_data_dir):
+                shutil.rmtree(user_data_dir, ignore_errors=True)
         except Exception as cleanup_error:
             print(f"⚠️  Error closing playwright browser: {cleanup_error}")
 
