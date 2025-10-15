@@ -221,3 +221,6 @@ __marimo__/
 .cursorignore
 .cursorindexingignore
 .cursor/
+
+result_metadata_*.json
+*.png
