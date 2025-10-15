@@ -70,12 +70,7 @@ LIVE_VIEW_HOST = os.getenv("LIVE_VIEW_HOST") or CHROME_DEBUG_ADDRESS
 if LIVE_VIEW_HOST in ("0.0.0.0", "", None):
     LIVE_VIEW_HOST = "127.0.0.1"
 
-CHROME_HEADLESS = _env_flag(os.getenv("CHROME_HEADLESS"))
-CHROME_HEADLESS_WIDTH = _env_int("CHROME_HEADLESS_WIDTH")
-CHROME_HEADLESS_HEIGHT = _env_int("CHROME_HEADLESS_HEIGHT")
-LIVE_VIEW_WIDTH = _env_int("LIVE_VIEW_WIDTH") or 1440
-LIVE_VIEW_HEIGHT = _env_int("LIVE_VIEW_HEIGHT") or 900
-LIVE_VIEW_SCALE = _env_float("LIVE_VIEW_SCALE") or 1.0
+CHROME_HEADLESS = _env_flag(os.getenv("CHROME_HEADLESS")) or False
 
 
 def _find_free_port(bind_host: str = "127.0.0.1") -> int:
@@ -156,15 +151,15 @@ async def start_chrome_with_debug_port(
 
     if CHROME_HEADLESS:
         window_size_flag = None
-        if CHROME_HEADLESS_WIDTH and CHROME_HEADLESS_HEIGHT:
-            window_size_flag = (
-                f"--window-size={CHROME_HEADLESS_WIDTH},{CHROME_HEADLESS_HEIGHT}"
-            )
-        elif CHROME_HEADLESS_WIDTH or CHROME_HEADLESS_HEIGHT:
-            print(
-                "⚠️  Both CHROME_HEADLESS_WIDTH and CHROME_HEADLESS_HEIGHT must be set "
-                "to override the window size."
-            )
+        # if CHROME_HEADLESS_WIDTH and CHROME_HEADLESS_HEIGHT:
+        #     window_size_flag = (
+        #         f"--window-size={CHROME_HEADLESS_WIDTH},{CHROME_HEADLESS_HEIGHT}"
+        #     )
+        # elif CHROME_HEADLESS_WIDTH or CHROME_HEADLESS_HEIGHT:
+        #     print(
+        #         "⚠️  Both CHROME_HEADLESS_WIDTH and CHROME_HEADLESS_HEIGHT must be set "
+        #         "to override the window size."
+        #     )
 
         cmd.extend(
             [
@@ -174,8 +169,8 @@ async def start_chrome_with_debug_port(
                 "--mute-audio",
             ]
         )
-        if window_size_flag:
-            cmd.append(window_size_flag)
+        # if window_size_flag:
+        #     cmd.append(window_size_flag)
 
     # Start Chrome process
     process = await asyncio.create_subprocess_exec(
@@ -212,52 +207,6 @@ async def start_chrome_with_debug_port(
     print(f"✅ Chrome started ({mode}) with CDP on {debug_address}:{port}")
 
     return process, port, user_data_dir, connect_host
-
-
-async def _apply_live_viewport_size():
-    """
-    Ensure the DevTools live view uses the desired viewport dimensions.
-    """
-    if not (LIVE_VIEW_WIDTH and LIVE_VIEW_HEIGHT):
-        return
-
-    try:
-        from .tools.playwright import playwright_page
-
-        if not playwright_page:
-            return
-
-        width = int(LIVE_VIEW_WIDTH)
-        height = int(LIVE_VIEW_HEIGHT)
-        await playwright_page.set_viewport_size(
-            {"width": int(LIVE_VIEW_WIDTH), "height": int(LIVE_VIEW_HEIGHT)}
-        )
-        try:
-            cdp_session = await playwright_page.context.new_cdp_session(
-                playwright_page
-            )
-            await cdp_session.send(
-                "Emulation.setDeviceMetricsOverride",
-                {
-                    "width": width,
-                    "height": height,
-                    "deviceScaleFactor": LIVE_VIEW_SCALE,
-                    "mobile": False,
-                    "screenWidth": width,
-                    "screenHeight": height,
-                },
-            )
-        except Exception:
-            # Some Chromium builds may not support this session call; continue anyway.
-            pass
-
-        await playwright_page.evaluate("window.dispatchEvent(new Event('resize'));")
-        print(
-            f"🖥️ Live viewport set to {LIVE_VIEW_WIDTH}x{LIVE_VIEW_HEIGHT} "
-            f"(scale {LIVE_VIEW_SCALE})"
-        )
-    except Exception as viewport_error:
-        print(f"⚠️  Unable to set live viewport size: {viewport_error}")
 
 
 def _rewrite_ws_value(value: str, host: str, port: int) -> str:
@@ -475,7 +424,12 @@ async def start_agent(
     if not resume_url:
         raise ValueError("Resume URL or file path is required")
 
-    chrome_process, chrome_port, user_data_dir, connect_host = await start_chrome_with_debug_port()
+    (
+        chrome_process,
+        chrome_port,
+        user_data_dir,
+        connect_host,
+    ) = await start_chrome_with_debug_port()
     cdp_url = f"http://{connect_host}:{chrome_port}"
     public_cdp_url = f"http://{LIVE_VIEW_HOST}:{chrome_port}"
 
@@ -542,8 +496,6 @@ async def _run_agent_background(
             raise Exception(
                 "Failed to connect Playwright to browser. File uploads will not work."
             )
-
-        await _apply_live_viewport_size()
 
         browser_session = BrowserSession(
             cdp_url=cdp_url,
