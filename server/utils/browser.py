@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from browser_use import Agent, BrowserSession, ChatGoogle
 from browser_use.tokens.service import TokenCost
+from browser_use.llm import ChatBrowserUse
 
 from .profile import default_profile
 from .tools.playwright import playwright_tools, connect_playwright_to_cdp
@@ -504,10 +505,8 @@ async def _run_agent_background(
             # dom_highlight_elements=True,
         )
 
-        tc = TokenCost(include_cost=True)
-        # llm = ChatBrowserUse()
-        llm = ChatGoogle(model="gemini-flash-latest")
-        tc.register_llm(llm)
+        llm = ChatBrowserUse()
+        # llm = ChatGoogle(model="gemini-flash-latest")
 
         agent = Agent(
             task=prompt,
@@ -516,52 +515,50 @@ async def _run_agent_background(
             browser_session=browser_session,
             sensitive_data=secrets if secrets else None,
             _url_shortening_limit=50,
+            calculate_cost=True,
         )
 
         print("🎯 Starting AI agent with custom Playwright actions...")
 
         result = await agent.run()
 
-        usage_summary = await tc.get_usage_summary()
+        print("🔍 AGENT IS DONE! Saving result to file...")
 
-        # Prepare metadata for webhook
-        metadata = {
-            "total_prompt_tokens": usage_summary.total_prompt_tokens,
-            "total_prompt_cached_tokens": usage_summary.total_prompt_cached_tokens,
-            "total_completion_tokens": usage_summary.total_completion_tokens,
-            "total_tokens": usage_summary.total_tokens,
-            "total_cost": float(usage_summary.total_cost)
-            if usage_summary.total_cost
-            else 0.0,
-            "user_id": user_id,
-            "url": url,
-            "duration_seconds": result.total_duration_seconds,
-            "final_result": str(result.final_result),
+        # Convert cost data to serializable format
+        cost_data = {}
+        if result.usage.by_model:
+            for model, usage_stats in result.usage.by_model.items():
+                cost_data[model] = {
+                    "prompt_tokens": usage_stats.prompt_tokens,
+                    "completion_tokens": usage_stats.completion_tokens,
+                    "total_tokens": usage_stats.total_tokens,
+                    "cost": usage_stats.cost,
+                    "cached_tokens": getattr(usage_stats, "cached_tokens", 0),
+                }
+
+        data_to_save = {
+            "result": result.final_result(),
             "success": result.is_successful(),
+            "duration_seconds": result.total_duration_seconds(),
+            "has_errors": result.has_errors(),
+            "cost": cost_data,
+            "usage": {
+                "total_prompt_tokens": result.usage.total_prompt_tokens,
+                "total_prompt_cached_tokens": result.usage.total_prompt_cached_tokens,
+                "total_completion_tokens": result.usage.total_completion_tokens,
+                "total_tokens": result.usage.total_tokens,
+                "total_cost": result.usage.total_cost,
+            },
         }
 
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        # Save the result data to a JSON file
         import json
 
-        metadata["timestamp"] = timestamp
+        result_filename = f"result_{int(time.time())}.json"
+        with open(result_filename, "w", encoding="utf-8") as f:
+            json.dump(data_to_save, f, indent=2, ensure_ascii=False)
 
-        # Write the result to a file
-        with open(f"result_metadata_{timestamp}.json", "w") as f:
-            json.dump(metadata, f)
-
-        print(f"✅ Integration demo completed! Result: {result}")
-
-    except Exception as e:
-        print(f"❌ Error: {e}")
-
-        # Send webhook notification for failure
-        error_metadata = {
-            "error": str(e),
-            "user_id": user_id,
-            "url": url,
-        }
-        await send_webhook(webhook_url, user_id, False, error_metadata)
-        return
+        print(f"🔍 Result saved to file: {result_filename}")
 
     finally:
         # Close playwright browser
