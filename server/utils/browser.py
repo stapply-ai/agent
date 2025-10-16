@@ -49,7 +49,8 @@ async def send_webhook(
     user_id: str,
     session_id: str,
     success: bool,
-    metadata: Dict[str, Any] = None,
+    agent_result: Dict[str, Any],
+    cost_metadata: Dict[str, Any],
 ):
     """
     Send webhook notification when agent completes.
@@ -68,7 +69,8 @@ async def send_webhook(
         "session_id": session_id,
         "success": success,
         "user_id": user_id,
-        "metadata": metadata or {},
+        "agent_result": agent_result,
+        "cost_metadata": cost_metadata,
         "timestamp": int(time.time()),
     }
 
@@ -221,30 +223,34 @@ async def _run_agent_background(
         print("🎯 Starting AI agent with custom Playwright actions...")
 
         result = await agent.run()
-
+        result.save_to_file(f"result_metadata_{session_id}.json")
         usage_summary = await tc.get_usage_summary()
 
         # Prepare metadata for webhook
-        metadata = {
+        agent_result = {
+            "user_id": user_id,
+            "url": url,
+            "duration_seconds": result.total_duration_seconds(),
+            "final_result": str(result.final_result()),
+            "success": result.is_successful(),
+            "has_errors": result.has_errors(),
+        }
+
+        cost_metadata = {
             "total_prompt_tokens": usage_summary.total_prompt_tokens,
             "total_prompt_cached_tokens": usage_summary.total_prompt_cached_tokens,
             "total_completion_tokens": usage_summary.total_completion_tokens,
             "total_tokens": usage_summary.total_tokens,
             "total_cost": float(usage_summary.total_cost)
             if usage_summary.total_cost
-            else 0.0,
-            "user_id": user_id,
-            "url": url,
-            "duration_seconds": result.total_duration_seconds,
-            "final_result": str(result.final_result),
-            "success": result.is_successful(),
+            else "Unknown",
         }
 
         print(f"✅ Integration demo completed! Result: {result}")
 
         # Send webhook notification
         await send_webhook(
-            webhook_url, user_id, session_id, result.is_successful(), metadata
+            webhook_url, user_id, session_id, result.is_successful(), agent_result, cost_metadata
         )
 
     except Exception as e:
