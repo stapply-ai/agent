@@ -207,9 +207,7 @@ async def _run_agent_background(
             # dom_highlight_elements=True,
         )
 
-        tc = TokenCost(include_cost=True)
         llm = ChatBrowserUse()
-        tc.register_llm(llm)
 
         agent = Agent(
             task=prompt,
@@ -218,14 +216,12 @@ async def _run_agent_background(
             browser_session=browser_session,
             sensitive_data=secrets if secrets else None,
             _url_shortening_limit=50,
+            calculate_cost=True,
         )
 
         print("🎯 Starting AI agent with custom Playwright actions...")
 
         result = await agent.run()
-        result.save_to_file(f"result_metadata_{session_id}.json")
-        usage_summary = await tc.get_usage_summary()
-
         # Prepare metadata for webhook
         agent_result = {
             "user_id": user_id,
@@ -237,16 +233,14 @@ async def _run_agent_background(
         }
 
         cost_metadata = {
-            "total_prompt_tokens": usage_summary.total_prompt_tokens,
-            "total_prompt_cached_tokens": usage_summary.total_prompt_cached_tokens,
-            "total_completion_tokens": usage_summary.total_completion_tokens,
-            "total_tokens": usage_summary.total_tokens,
-            "total_cost": float(usage_summary.total_cost)
-            if usage_summary.total_cost
+            "total_prompt_tokens": result.usage.total_prompt_tokens,
+            "total_prompt_cached_tokens": result.usage.total_prompt_cached_tokens,
+            "total_completion_tokens": result.usage.total_completion_tokens,
+            "total_tokens": result.usage.total_tokens,
+            "total_cost": float(result.usage.total_cost)
+            if result.usage.total_cost
             else "Unknown",
         }
-
-        print(f"✅ Integration demo completed! Result: {result}")
 
         # Send webhook notification
         await send_webhook(
