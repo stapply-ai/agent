@@ -223,4 +223,5 @@ __marimo__/
 .cursor/
 
 result_metadata_*.json
+result_*.json
 *.png
