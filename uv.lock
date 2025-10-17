@@ -176,7 +176,7 @@ wheels = [
 [[package]]
 name = "browser-use"
 version = "0.8.1"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/stapply-ai/browser-use.git?rev=main#12f23f2afe6d849ea5b340e88d38e0c9fac5616d" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -209,10 +209,6 @@ dependencies = [
     { name = "screeninfo", marker = "platform_system != 'darwin'" },
     { name = "typing-extensions" },
     { name = "uuid7" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/54/d6/8cd999429c441732598a500f8e656db1635aeb47530eb466713bbd7712dd/browser_use-0.8.1.tar.gz", hash = "sha256:72f535b0d1ca89071e4b165879a9cfd10ccb085d5407e31064fa12f9ba328522", size = 349624, upload-time = "2025-10-14T22:02:33.4Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/4c/e2/3d84dbdc3d73b8adce2d101c030e298e64292000b2bc6c6c6978dea86aa3/browser_use-0.8.1-py3-none-any.whl", hash = "sha256:8d9bf299bbebad62a1bf5592149567bd60e867acd4b979a01e62db37f3f02629", size = 424815, upload-time = "2025-10-14T22:02:31.889Z" },
 ]
 
 [[package]]
@@ -4475,7 +4471,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp" },
-    { name = "browser-use" },
+    { name = "browser-use", git = "https://github.com/stapply-ai/browser-use.git?rev=main" },
     { name = "fastapi" },
     { name = "kernel" },
     { name = "playwright" },
