@@ -14,6 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    git \
     tini \
     # Browser dependencies
     libnss3 \
