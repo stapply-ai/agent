@@ -14,7 +14,7 @@ dependencies = [
     "playwright",
     "aiohttp",
     "kernel",
-    "browser-use",
+    "browser-use @ git+https://github.com/stapply-ai/browser-use.git@main",
 ]
 
 [dependency-groups]
