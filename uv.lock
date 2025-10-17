@@ -176,7 +176,7 @@ wheels = [
 [[package]]
 name = "browser-use"
 version = "0.8.1"
-source = { git = "https://github.com/stapply-ai/browser-use.git?rev=main#6006f5c8752e54bc37ae6d2c857a4dc8b9487436" }
+source = { git = "https://github.com/stapply-ai/browser-use.git?rev=main#f6fa0d2aefe72e91a62d287b69c63e1eba27b580" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
