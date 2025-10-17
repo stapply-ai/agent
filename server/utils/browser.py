@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 
 from browser_use import Agent, BrowserSession
 from browser_use.llm import ChatBrowserUse
-from browser_use.tokens.service import TokenCost
 
 from kernel import AsyncKernel, Kernel
 
@@ -242,9 +241,32 @@ async def _run_agent_background(
             else "Unknown",
         }
 
+        # Write the result to a file (prod_results/result_<timestamp>.json)
+        import json
+
+        # Check if the directory exists
+        if not os.path.exists("prod_results"):
+            # If it doesn't exist, create it
+            os.makedirs("prod_results")
+
+        with open(f"prod_results/result_{time.time()}.json", "w") as f:
+            json.dump(
+                {
+                    "agent_result": agent_result,
+                    "cost_metadata": cost_metadata,
+                },
+                f,
+                indent=2,
+            )
+
         # Send webhook notification
         await send_webhook(
-            webhook_url, user_id, session_id, result.is_successful(), agent_result, cost_metadata
+            webhook_url,
+            user_id,
+            session_id,
+            result.is_successful(),
+            agent_result,
+            cost_metadata,
         )
 
     except Exception as e:
