@@ -187,7 +187,6 @@ async def _run_agent_background(
     Run the agent in the background and send webhook when complete.
     """
     file_path = None
-    replay = None
 
     try:
         if resume_url:
@@ -291,7 +290,7 @@ async def _run_agent_background(
 
         # Close playwright browser
         try:
-            from .tools.playwright import playwright_browser, playwright_page
+            from .tools.playwright import playwright_browser
 
             if playwright_browser:
                 print("🔍 Closing playwright browser")
