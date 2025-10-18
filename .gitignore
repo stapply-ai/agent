@@ -221,6 +221,10 @@ __marimo__/
 .cursorindexingignore
 .cursor/
 
+# Prod results
+prod_results/
+recording-*.mp4
+
 # Result files
 result_metadata_*.json
 result_*.json

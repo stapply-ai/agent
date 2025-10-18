@@ -89,6 +89,25 @@ wheels = [
 ]
 
 [[package]]
+name = "anchorbrowser"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "httpx" },
+    { name = "playwright" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b3/38/b0b7d891f60f861c825d93c013504f7033059c719a292997f214ddafe7ef/anchorbrowser-0.1.1.tar.gz", hash = "sha256:2a80778c00d3c015f80cc4632f4951e705652b6d672f2e366a20601f4bf867b9", size = 132570, upload-time = "2025-10-17T02:30:46.108Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/aa/27/75c0835d4dca621124e2d7ac6d7c424481348cc32b7e65601f09af21e1ac/anchorbrowser-0.1.1-py3-none-any.whl", hash = "sha256:2b62768c43272071278aa8fe65a3efed1527b25eb26285f7412a8bfff65d25b9", size = 135638, upload-time = "2025-10-17T02:30:45.057Z" },
+]
+
+[[package]]
 name = "annotated-types"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -176,7 +195,7 @@ wheels = [
 [[package]]
 name = "browser-use"
 version = "0.8.1"
-source = { git = "https://github.com/stapply-ai/browser-use.git?rev=main#edcb4aea611fc0bd87b815518b78b2781c63eac5" }
+source = { git = "https://github.com/stapply-ai/browser-use.git?rev=main#cd47376b9d5531ddfcfacb131088fd2fb88d1c25" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
@@ -4478,6 +4497,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "anchorbrowser" },
     { name = "browser-use" },
     { name = "fastapi" },
     { name = "kernel" },
@@ -4491,6 +4511,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp" },
+    { name = "anchorbrowser", specifier = ">=0.1.1" },
     { name = "browser-use", git = "https://github.com/stapply-ai/browser-use.git?rev=main" },
     { name = "fastapi" },
     { name = "kernel" },

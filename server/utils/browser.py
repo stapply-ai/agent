@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from browser_use import Agent, BrowserSession
 from browser_use.llm import ChatBrowserUse
 
-from kernel import AsyncKernel, Kernel
+from anchorbrowser import Anchorbrowser
 
 from .profile import default_profile
 from .tools.playwright import playwright_tools, connect_playwright_to_cdp
@@ -137,19 +137,19 @@ async def start_agent(
     if not resume_url:
         raise ValueError("Resume URL or file path is required")
 
-    # Initialize Kernel client and create browser session
-    client = Kernel(api_key=os.environ["KERNEL_API_KEY"])
-    kernel_browser = client.browsers.create()
-    session_id = kernel_browser.session_id
+    # Initialize Anchor client and create browser session
+    anchor_client = Anchorbrowser(api_key=os.getenv("ANCHOR_API_KEY"))
+    session = anchor_client.sessions.create(
+        browser={"headless": {"active": False}},
+    )
 
-    print(f"🎯 Created browser session: {session_id}")
-    print(f"Kernel browser URL: {kernel_browser.browser_live_view_url}")
+    session_id = session.data.id
 
     # Start the agent process in the background
     asyncio.create_task(
         _run_agent_background(
-            client,
-            kernel_browser,
+            anchor_client,
+            session,
             user_id,
             url,
             profile,
@@ -162,12 +162,12 @@ async def start_agent(
     )
 
     # Return session_id immediately
-    return session_id, kernel_browser.browser_live_view_url
+    return session_id, session.data.live_view_url
 
 
 async def _run_agent_background(
-    client: Kernel,
-    kernel_browser,
+    anchor_client: Anchorbrowser,
+    session: dict,
     user_id: str,
     url: str,
     profile: dict,
@@ -191,16 +191,14 @@ async def _run_agent_background(
         prompt = default_prompt(url, profile, file_path, instructions)
 
         # Connect Playwright to the browser
-        playwright_connected = await connect_playwright_to_cdp(
-            kernel_browser.cdp_ws_url
-        )
+        playwright_connected = await connect_playwright_to_cdp(session.data.cdp_url)
         if not playwright_connected:
             raise Exception(
                 "Failed to connect Playwright to browser. File uploads will not work."
             )
 
         browser_session = BrowserSession(
-            cdp_url=kernel_browser.cdp_ws_url,
+            cdp_url=session.data.cdp_url,
             headless=False,
             optimize_keyboard_events=True,
             # highlight_elements=True,
@@ -282,12 +280,8 @@ async def _run_agent_background(
         raise
 
     finally:
-        if client and kernel_browser:
-            client.browsers.delete_by_id(kernel_browser.session_id)
-            # if replay:
-            #     client.browsers.replays.stop(
-            #         replay_id=replay.replay_id, id=kernel_browser.session_id
-            #     )
+        if anchor_client and session:
+            anchor_client.sessions.delete(session.data.id)
 
         # Close playwright browser
         try:
@@ -307,32 +301,23 @@ async def _run_agent_background(
         if file_path:
             cleanup_resume(file_path)
 
+        if session:
+            await anchor_download_replay(anchor_client, session.data.id)
+
         print("✅ Cleanup complete")
 
 
-async def download_replay(client: AsyncKernel, kernel_browser):
-    replays = client.browsers.replays.list(kernel_browser.session_id)
+async def anchor_download_replay(anchor_client: Anchorbrowser, session_id: str):
+    recordings = anchor_client.sessions.recordings.list(session_id)
+    print("Recordings:", recordings.data)
+    recording = anchor_client.sessions.recordings.primary.get(session_id)
 
-    for replay in replays:
-        print(f"Replay ID: {replay.replay_id}")
-        print(f"View URL: {replay.replay_view_url}")
+    # Save to file
+    with open(f"recording-{session_id}.mp4", "wb") as f:
+        for chunk in recording.iter_bytes(chunk_size=8192):
+            f.write(chunk)
 
-        # Download the mp4 file
-        video_data = client.browsers.replays.download(
-            replay_id=replay.replay_id, id=kernel_browser.session_id
-        )
-
-        # Get the content as bytes
-        content = video_data.read()
-
-        if not os.path.exists("replays"):
-            os.makedirs("replays")
-
-        filename = f"replays/replay-{replay.replay_id}-{kernel_browser.session_id}.mp4"
-        async with aiofiles.open(filename, "wb") as f:
-            await f.write(content)
-
-        print(f"Saved replay to {filename}")
+    print(f"Recording saved as recording-{session_id}.mp4")
 
 
 if __name__ == "__main__":
