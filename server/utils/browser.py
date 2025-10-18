@@ -500,6 +500,7 @@ async def _run_agent_background(
         browser_session = BrowserSession(
             cdp_url=cdp_url,
             headless=CHROME_HEADLESS,
+            optimize_keyboard_events=True,
             # highlight_elements=True,
             # dom_highlight_elements=True,
         )
