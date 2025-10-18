@@ -202,6 +202,7 @@ async def _run_agent_background(
         browser_session = BrowserSession(
             cdp_url=kernel_browser.cdp_ws_url,
             headless=False,
+            optimize_keyboard_events=True,
             # highlight_elements=True,
             # dom_highlight_elements=True,
         )
@@ -218,9 +219,8 @@ async def _run_agent_background(
             calculate_cost=True,
         )
 
-        print("🎯 Starting AI agent with custom Playwright actions...")
-
         result = await agent.run()
+
         # Prepare metadata for webhook
         agent_result = {
             "user_id": user_id,
