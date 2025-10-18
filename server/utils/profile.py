@@ -5,6 +5,7 @@ default_profile = {
     "email": "thomas.mueller@example.com",
     "phone": "+41781234567",
     "address": "Müllerstrasse 123, 8000 Zürich, Switzerland",
+    "nationality": "Switzerland",
     "linkedin": "https://www.linkedin.com/in/thomas-mueller-1234567890",
     "github": "https://github.com/thomas-mueller",
     "website": "https://thomas-mueller.com",

@@ -12,8 +12,7 @@ import uuid
 import aiohttp
 from dotenv import load_dotenv
 
-from browser_use import Agent, BrowserSession, ChatGoogle
-from browser_use.tokens.service import TokenCost
+from browser_use import Agent, BrowserSession
 from browser_use.llm import ChatBrowserUse
 
 from .profile import default_profile
@@ -506,7 +505,6 @@ async def _run_agent_background(
         )
 
         llm = ChatBrowserUse()
-        # llm = ChatGoogle(model="gemini-flash-latest")
 
         agent = Agent(
             task=prompt,
