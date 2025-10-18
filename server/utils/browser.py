@@ -5,7 +5,6 @@ import hashlib
 import time
 from typing import Dict, Any, Optional
 
-import aiofiles
 import aiohttp
 from dotenv import load_dotenv
 
@@ -19,7 +18,14 @@ from .tools.playwright import playwright_tools, connect_playwright_to_cdp
 from .resume import download_resume, cleanup_resume
 from .prompt import default_prompt
 
+import boto3
+
 load_dotenv()
+
+ACCOUNT_ID = os.getenv("CF_ACCOUNT_ID")  # e.g. 'abc123def4567890'
+R2_ACCESS_KEY_ID = os.getenv("S3_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY")
+R2_BUCKET = "recordings"
 
 
 def generate_webhook_signature(payload: str, secret: str) -> str:
@@ -302,22 +308,84 @@ async def _run_agent_background(
             cleanup_resume(file_path)
 
         if session:
-            await anchor_download_replay(anchor_client, session.data.id)
+            await anchor_download_replay(anchor_client, user_id, session.data.id)
 
         print("✅ Cleanup complete")
 
 
-async def anchor_download_replay(anchor_client: Anchorbrowser, session_id: str):
-    recordings = anchor_client.sessions.recordings.list(session_id)
-    print("Recordings:", recordings.data)
+async def anchor_download_replay(
+    anchor_client: Anchorbrowser, user_id: str, session_id: str
+):
+    """
+    Streams the session recording directly into R2 (no local file).
+    Returns the R2 object key: '{user_id}/{session_id}.mp4'
+    """
     recording = anchor_client.sessions.recordings.primary.get(session_id)
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=f"https://{ACCOUNT_ID}.r2.cloudflarestorage.com",
+        aws_access_key_id=R2_ACCESS_KEY_ID,
+        aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+        region_name="auto",
+    )
 
-    # Save to file
-    with open(f"recording-{session_id}.mp4", "wb") as f:
-        for chunk in recording.iter_bytes(chunk_size=8192):
-            f.write(chunk)
+    key = f"{user_id}/{session_id}.mp4"
+    content_type = "video/mp4"
 
-    print(f"Recording saved as recording-{session_id}.mp4")
+    init = await asyncio.to_thread(
+        s3.create_multipart_upload,
+        Bucket=R2_BUCKET,
+        Key=key,
+        ContentType=content_type,
+        Metadata={"user_id": user_id, "session_id": session_id},
+    )
+    upload_id = init["UploadId"]
+
+    parts = []
+    part_number = 1
+
+    # S3/R2 requires each part (except the last) to be >= 5 MiB.
+    # Use a chunk size >= 5 MiB to be safe.
+    CHUNK_SIZE = 8 * 1024 * 1024  # 8 MiB
+
+    try:
+        # 2) Upload parts as we read from the source stream
+        for chunk in recording.iter_bytes(chunk_size=CHUNK_SIZE):
+            resp = await asyncio.to_thread(
+                s3.upload_part,
+                Bucket=R2_BUCKET,
+                Key=key,
+                PartNumber=part_number,
+                UploadId=upload_id,
+                Body=chunk,
+            )
+            parts.append({"ETag": resp["ETag"], "PartNumber": part_number})
+            part_number += 1
+
+        # 3) Complete multipart upload
+        await asyncio.to_thread(
+            s3.complete_multipart_upload,
+            Bucket=R2_BUCKET,
+            Key=key,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+        )
+
+        print(f"Uploaded to R2 as s3://{R2_BUCKET}/{key}")
+        return key
+
+    except Exception as e:
+        # Clean up on failure
+        try:
+            await asyncio.to_thread(
+                s3.abort_multipart_upload,
+                Bucket=R2_BUCKET,
+                Key=key,
+                UploadId=upload_id,
+            )
+        except Exception:
+            pass
+        raise e
 
 
 if __name__ == "__main__":

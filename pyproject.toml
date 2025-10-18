@@ -16,6 +16,7 @@ dependencies = [
     "kernel",
     "browser-use @ git+https://github.com/stapply-ai/browser-use.git@main",
     "anchorbrowser>=0.1.1",
+    "boto3>=1.40.55",
 ]
 
 [dependency-groups]
