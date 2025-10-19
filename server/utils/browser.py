@@ -3,6 +3,9 @@ import os
 import hmac
 import hashlib
 import time
+import subprocess
+import shutil
+import tempfile
 from typing import Dict, Any, Optional
 
 import aiohttp
@@ -222,7 +225,20 @@ async def _run_agent_background(
             calculate_cost=True,
         )
 
-        result = await agent.run()
+        # result = await agent.run()
+        result = {
+            "total_duration_seconds": 10,
+            "final_result": "Test result",
+            "is_successful": True,
+            "has_errors": False,
+            "usage": {
+                "total_prompt_tokens": 100,
+                "total_prompt_cached_tokens": 10,
+                "total_completion_tokens": 90,
+                "total_tokens": 100,
+                "total_cost": 0.01,
+            },
+        }
 
         # Prepare metadata for webhook
         agent_result = {
@@ -316,8 +332,9 @@ async def anchor_download_replay(
     anchor_client: Anchorbrowser, user_id: str, session_id: str
 ):
     """
-    Streams the session recording directly into R2 (no local file).
-    Returns the R2 object key: '{user_id}/{session_id}.mp4'
+    Downloads the session recording, trims the first 5 seconds, speeds it up 4x,
+    and uploads the processed clip into R2. Returns the R2 object key:
+    '{user_id}/{session_id}.mp4'
     """
     recording = anchor_client.sessions.recordings.primary.get(session_id)
     s3 = boto3.client(
@@ -331,60 +348,156 @@ async def anchor_download_replay(
     key = f"{user_id}/{session_id}.mp4"
     content_type = "video/mp4"
 
-    init = await asyncio.to_thread(
-        s3.create_multipart_upload,
-        Bucket=R2_BUCKET,
-        Key=key,
-        ContentType=content_type,
-        Metadata={"user_id": user_id, "session_id": session_id},
-    )
-    upload_id = init["UploadId"]
-
-    parts = []
-    part_number = 1
-
-    # S3/R2 requires each part (except the last) to be >= 5 MiB.
-    # Use a chunk size >= 5 MiB to be safe.
-    CHUNK_SIZE = 8 * 1024 * 1024  # 8 MiB
-
-    try:
-        # 2) Upload parts as we read from the source stream
-        for chunk in recording.iter_bytes(chunk_size=CHUNK_SIZE):
-            resp = await asyncio.to_thread(
-                s3.upload_part,
-                Bucket=R2_BUCKET,
-                Key=key,
-                PartNumber=part_number,
-                UploadId=upload_id,
-                Body=chunk,
-            )
-            parts.append({"ETag": resp["ETag"], "PartNumber": part_number})
-            part_number += 1
-
-        # 3) Complete multipart upload
-        await asyncio.to_thread(
-            s3.complete_multipart_upload,
-            Bucket=R2_BUCKET,
-            Key=key,
-            UploadId=upload_id,
-            MultipartUpload={"Parts": parts},
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        raise RuntimeError(
+            "ffmpeg is required to process recordings. Please install ffmpeg and ensure it is on PATH."
         )
 
-        print(f"Uploaded to R2 as s3://{R2_BUCKET}/{key}")
-        return key
+    CHUNK_SIZE = 8 * 1024 * 1024  # 8 MiB
 
-    except Exception as e:
-        # Clean up on failure
+    with tempfile.TemporaryDirectory(prefix="stapply-recording-") as temp_dir:
+        original_path = os.path.join(temp_dir, "original.mp4")
+        processed_path = os.path.join(temp_dir, "processed.mp4")
+
+        await asyncio.to_thread(
+            _write_recording_to_file,
+            recording,
+            original_path,
+            CHUNK_SIZE,
+        )
+
+        await asyncio.to_thread(
+            _process_recording_with_ffmpeg,
+            ffmpeg_path,
+            original_path,
+            processed_path,
+        )
+
+        init = await asyncio.to_thread(
+            s3.create_multipart_upload,
+            Bucket=R2_BUCKET,
+            Key=key,
+            ContentType=content_type,
+            Metadata={"user_id": user_id, "session_id": session_id},
+        )
+        upload_id = init["UploadId"]
+
+        parts = []
+        part_number = 1
+
         try:
+            with open(processed_path, "rb") as processed_file:
+                while True:
+                    chunk = processed_file.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    resp = await asyncio.to_thread(
+                        s3.upload_part,
+                        Bucket=R2_BUCKET,
+                        Key=key,
+                        PartNumber=part_number,
+                        UploadId=upload_id,
+                        Body=chunk,
+                    )
+                    parts.append({"ETag": resp["ETag"], "PartNumber": part_number})
+                    part_number += 1
+
             await asyncio.to_thread(
-                s3.abort_multipart_upload,
+                s3.complete_multipart_upload,
                 Bucket=R2_BUCKET,
                 Key=key,
                 UploadId=upload_id,
+                MultipartUpload={"Parts": parts},
             )
-        except Exception:
-            pass
-        raise e
+
+            print(f"Uploaded processed recording to R2 as s3://{R2_BUCKET}/{key}")
+            return key
+
+        except Exception as e:
+            try:
+                await asyncio.to_thread(
+                    s3.abort_multipart_upload,
+                    Bucket=R2_BUCKET,
+                    Key=key,
+                    UploadId=upload_id,
+                )
+            except Exception:
+                pass
+            raise e
+
+
+def _write_recording_to_file(recording, destination: str, chunk_size: int) -> None:
+    with open(destination, "wb") as output_file:
+        for chunk in recording.iter_bytes(chunk_size=chunk_size):
+            output_file.write(chunk)
+
+
+def _process_recording_with_ffmpeg(
+    ffmpeg_path: str, source: str, destination: str
+) -> None:
+    base_command = [
+        ffmpeg_path,
+        "-y",
+        "-ss",
+        "5",
+        "-i",
+        source,
+        "-vf",
+        "setpts=0.25*PTS",
+        "-af",
+        "atempo=2,atempo=2",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+faststart",
+        destination,
+    ]
+
+    try:
+        subprocess.run(
+            base_command,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        if "matches no streams" in (exc.stderr or ""):
+            fallback_command = [
+                ffmpeg_path,
+                "-y",
+                "-ss",
+                "5",
+                "-i",
+                source,
+                "-vf",
+                "setpts=0.25*PTS",
+                "-an",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "fast",
+                "-movflags",
+                "+faststart",
+                destination,
+            ]
+            subprocess.run(
+                fallback_command,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            return
+
+        raise RuntimeError(
+            f"ffmpeg failed while processing recording: {(exc.stderr or '').strip()}"
+        ) from exc
 
 
 if __name__ == "__main__":
