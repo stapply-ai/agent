@@ -225,20 +225,7 @@ async def _run_agent_background(
             calculate_cost=True,
         )
 
-        # result = await agent.run()
-        result = {
-            "total_duration_seconds": 10,
-            "final_result": "Test result",
-            "is_successful": True,
-            "has_errors": False,
-            "usage": {
-                "total_prompt_tokens": 100,
-                "total_prompt_cached_tokens": 10,
-                "total_completion_tokens": 90,
-                "total_tokens": 100,
-                "total_cost": 0.01,
-            },
-        }
+        result = await agent.run()
 
         # Prepare metadata for webhook
         agent_result = {
