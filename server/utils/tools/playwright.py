@@ -190,11 +190,8 @@ async def _try_selector(page: Page, selector: str, context: str) -> Page | None:
                 print("    ✅ Found direct file input element!")
                 return selected_element
             else:
-                print(
-                    f"    🔍 Found <{tag_name}> element, but skipping as it would trigger file dialog"
-                )
-                # Don't return non-file input elements to avoid triggering dialogs
-                return None
+                print("    ⚠️ Found non-file input element but AnchorBrowser don't show file dialog so it's okay!")
+                return selected_element
         else:
             print("    ❌ No elements found matching the selector")
 
@@ -328,16 +325,6 @@ async def playwright_file_upload(
             )
 
         print("✅ File input element found")
-
-        # Take a screenshot after successfully finding the file input
-        print("📸 Taking screenshot after finding file input...")
-        try:
-            screenshot_path = os.path.join(os.getcwd(), "screenshots")
-            found_screenshot = os.path.join(screenshot_path, "file_input_found.png")
-            await playwright_page.screenshot(path=found_screenshot, full_page=True)
-            print(f"✅ File input found screenshot saved: {found_screenshot}")
-        except Exception as screenshot_error:
-            print(f"⚠️  Failed to take file input found screenshot: {screenshot_error}")
 
         # Set the file on the input element
         print("🔍 Step 5: Uploading file to input element...")
