@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Documentation - Agent Stapply</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #fafafa;
+            color: #1a1a1a;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: white;
+            border-bottom: 1px solid #f0f0f0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1.5rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            width: 100px;
+            height: auto;
+        }
+
+        .nav {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .nav a {
+            color: #666;
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+
+        .nav a:hover {
+            color: #1a1a1a;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 3rem 2rem;
+        }
+
+        .hero {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 1rem;
+        }
+
+        .subtitle {
+            font-size: 1.125rem;
+            color: #666;
+        }
+
+        .section {
+            background: white;
+            border-radius: 20px;
+            padding: 2.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 40px rgba(0, 0, 0, 0.03);
+            margin-bottom: 2rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin: 1.5rem 0 1rem;
+        }
+
+        .endpoint {
+            background: #fafafa;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .endpoint-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .method {
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .method.post {
+            background: #10b981;
+            color: white;
+        }
+
+        .method.get {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .endpoint-path {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        .endpoint-description {
+            color: #666;
+            margin-bottom: 1rem;
+        }
+
+        .code-block {
+            background: #1a1a1a;
+            color: #f0f0f0;
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+
+        .param-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        .param-table th {
+            text-align: left;
+            padding: 0.75rem;
+            background: #fafafa;
+            font-weight: 600;
+            font-size: 0.875rem;
+            border-bottom: 1px solid #e5e5e5;
+        }
+
+        .param-table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 0.875rem;
+        }
+
+        .param-name {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-weight: 500;
+        }
+
+        .param-type {
+            color: #666;
+            font-size: 0.8125rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: 0.5rem;
+        }
+
+        .badge.required {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge.optional {
+            background: #e5e5e5;
+            color: #666;
+        }
+
+        .note {
+            background: #f0f9ff;
+            border-left: 3px solid #3b82f6;
+            padding: 1rem;
+            border-radius: 6px;
+            margin: 1rem 0;
+        }
+
+        .note-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: #999;
+            font-size: 0.875rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 2rem 1rem;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .section {
+                padding: 1.5rem;
+            }
+
+            .nav {
+                gap: 1rem;
+            }
+
+            .header-content {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div class="header-content">
+            <img src="https://storage.stapply.ai/assets/stapply_black.svg" alt="Stapply" class="logo">
+            <nav class="nav">
+                <a href="/">Home</a>
+                <a href="/health">Health</a>
+            </nav>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <h1>API Documentation</h1>
+            <p class="subtitle">AI-powered job application automation</p>
+        </div>
+
+        <div class="section">
+            <h2>Getting Started</h2>
+            <p>The Agent Stapply API enables automated job applications using AI-powered browser automation. The API
+                accepts job details and candidate information, then autonomously navigates application forms, fills in
+                data, and submits applications.</p>
+
+            <h3>Base URL</h3>
+            <div class="code-block">https://your-api-domain.com</div>
+
+            <div class="note">
+                <div class="note-title">Authentication</div>
+                <p>API authentication will be required for production use. Contact your administrator for API
+                    credentials.</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Endpoints</h2>
+
+            <div class="endpoint">
+                <div class="endpoint-header">
+                    <span class="method post">POST</span>
+                    <span class="endpoint-path">/apply</span>
+                </div>
+                <p class="endpoint-description">Start an automated job application process. Returns a session ID
+                    immediately and runs the agent asynchronously.</p>
+
+                <h3>Request Body</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="param-name">user_id</span><span class="badge required">required</span></td>
+                            <td class="param-type">string</td>
+                            <td>Unique identifier for the user</td>
+                        </tr>
+                        <tr>
+                            <td><span class="param-name">url</span><span class="badge required">required</span></td>
+                            <td class="param-type">string</td>
+                            <td>Target job application URL</td>
+                        </tr>
+                        <tr>
+                            <td><span class="param-name">resume_url</span><span class="badge required">required</span>
+                            </td>
+                            <td class="param-type">string</td>
+                            <td>URL to the candidate's resume file</td>
+                        </tr>
+                        <tr>
+                            <td><span class="param-name">profile</span><span class="badge optional">optional</span></td>
+                            <td class="param-type">object</td>
+                            <td>Candidate profile data for form filling</td>
+                        </tr>
+                        <tr>
+                            <td><span class="param-name">instructions</span><span class="badge optional">optional</span>
+                            </td>
+                            <td class="param-type">string</td>
+                            <td>Additional instructions for the agent</td>
+                        </tr>
+                        <tr>
+                            <td><span class="param-name">secrets</span><span class="badge optional">optional</span></td>
+                            <td class="param-type">object</td>
+                            <td>Sensitive data to pass to the agent (not logged)</td>
+                        </tr>
+                        <tr>
+                            <td><span class="param-name">webhook_url</span><span class="badge optional">optional</span>
+                            </td>
+                            <td class="param-type">string</td>
+                            <td>Webhook URL for completion notification (defaults based on environment)</td>
+                        </tr>
+                        <tr>
+                            <td><span class="param-name">model</span><span class="badge optional">optional</span></td>
+                            <td class="param-type">string</td>
+                            <td>Custom LLM model (format: openai/model-name, google/model-name, or
+                                groq/provider/model-name)</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Example Request</h3>
+                <div class="code-block">{
+                    "user_id": "user_123",
+                    "url": "https://company.com/careers/apply",
+                    "resume_url": "https://storage.example.com/resumes/user_123.pdf",
+                    "profile": {
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "email": "john@example.com",
+                    "phone": "+1234567890"
+                    },
+                    "instructions": "Apply for the software engineer position",
+                    "model": "openai/gpt-4"
+                    }</div>
+
+                <h3>Response</h3>
+                <div class="code-block">{
+                    "session_id": "session_abc123",
+                    "live_url": "https://anchor.browser/live/session_abc123"
+                    }</div>
+
+                <h3>Response Fields</h3>
+                <table class="param-table">
+                    <thead>
+                        <tr>
+                            <th>Field</th>
+                            <th>Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="param-name">session_id</td>
+                            <td class="param-type">string</td>
+                            <td>Unique identifier for the application session</td>
+                        </tr>
+                        <tr>
+                            <td class="param-name">live_url</td>
+                            <td class="param-type">string</td>
+                            <td>URL to watch the browser automation live</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="endpoint">
+                <div class="endpoint-header">
+                    <span class="method get">GET</span>
+                    <span class="endpoint-path">/health</span>
+                </div>
+                <p class="endpoint-description">Check the API health status and get system information.</p>
+
+                <h3>Response</h3>
+                <div class="code-block">{
+                    "status": "Healthy",
+                    "version": "1.0.0",
+                    "timestamp": "2025-10-25 19:00:00 UTC",
+                    "response_time": "2.5ms"
+                    }</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Model Providers</h2>
+            <p>The API supports multiple LLM providers. Specify the model using the format below:</p>
+
+            <h3>OpenAI</h3>
+            <div class="code-block">"model": "openai/gpt-4"
+                "model": "openai/gpt-4-turbo"
+                "model": "openai/gpt-3.5-turbo"</div>
+
+            <h3>Google Gemini</h3>
+            <div class="code-block">"model": "google/gemini-pro"
+                "model": "google/gemini-1.5-pro"</div>
+
+            <h3>Groq</h3>
+            <div class="code-block">"model": "groq/anthropic/claude-3.5-sonnet"
+                "model": "groq/meta/llama-3.1-70b"</div>
+
+            <div class="note">
+                <div class="note-title">Default Model</div>
+                <p>If no model is specified, the system uses the default configured model.</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Webhooks</h2>
+            <p>When an application completes, the API sends a POST request to the configured webhook URL with the
+                following payload:</p>
+
+            <h3>Webhook Payload</h3>
+            <div class="code-block">{
+                "session_id": "session_abc123",
+                "success": true,
+                "user_id": "user_123",
+                "agent_result": {
+                "duration_seconds": 45.2,
+                "final_result": "Application submitted successfully",
+                "success": true,
+                "has_errors": false
+                },
+                "cost_metadata": {
+                "total_tokens": 15420,
+                "total_cost": 0.234
+                },
+                "timestamp": 1729886400
+                }</div>
+
+            <h3>Webhook Security</h3>
+            <p>Webhook requests include HMAC-SHA256 signatures in the <code>X-Webhook-Signature</code> header. Verify
+                the signature using your webhook secret to ensure requests are from the API.</p>
+        </div>
+
+        <div class="section">
+            <h2>Error Responses</h2>
+            <p>The API returns standard HTTP status codes:</p>
+
+            <table class="param-table">
+                <thead>
+                    <tr>
+                        <th>Status Code</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="param-name">200</td>
+                        <td>Success</td>
+                    </tr>
+                    <tr>
+                        <td class="param-name">202</td>
+                        <td>Accepted - Request received and processing started</td>
+                    </tr>
+                    <tr>
+                        <td class="param-name">400</td>
+                        <td>Bad Request - Invalid parameters</td>
+                    </tr>
+                    <tr>
+                        <td class="param-name">403</td>
+                        <td>Forbidden - Unauthorized origin or access denied</td>
+                    </tr>
+                    <tr>
+                        <td class="param-name">500</td>
+                        <td>Internal Server Error - Something went wrong</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Error Response Format</h3>
+            <div class="code-block">{
+                "error": "Bad Request",
+                "detail": "Missing required field: user_id"
+                }</div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>© 2025 Stapply. Built with FastAPI.</p>
+    </div>
+</body>
+
+</html>
