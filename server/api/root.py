@@ -2,27 +2,25 @@
 Root endpoint.
 """
 
-from typing import Dict, Any
+from pathlib import Path
 from fastapi import APIRouter
+from fastapi.responses import HTMLResponse
 
 router = APIRouter()
 
 @router.get(
     "/",
     summary="Root Endpoint",
-    description="Welcome message and API information",
+    description="Welcome page and API information",
     tags=["General"],
+    response_class=HTMLResponse,
 )
-async def root() -> Dict[str, Any]:
+async def root() -> str:
     """
-    Root endpoint with API information.
+    Root endpoint with API home page.
 
     Returns:
-        Dict containing welcome message and API info
+        HTML page with API information
     """
-    return {
-        "message": "Welcome to Agent Stapply cloud server",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "health": "/health",
-    }
+    html_path = Path(__file__).parent / "templates" / "home.html"
+    return html_path.read_text()
