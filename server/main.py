@@ -1,5 +1,5 @@
 """
-Agent Stapply cloud server - Entry point
+Agent Stapply API - Entry point
 """
 
 from .api.app import app
