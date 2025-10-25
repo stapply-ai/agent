@@ -36,6 +36,7 @@ async def apply(request: ApplyRequest) -> Dict[str, Any]:
             instructions=request.instructions,
             secrets=request.secrets,
             webhook_url=request.webhook_url,
+            model=request.model,
         )
 
         return {

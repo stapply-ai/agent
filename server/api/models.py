@@ -50,3 +50,11 @@ class ApplyRequest(BaseModel):
         default="http://localhost:3000/webhook/applications",
         description="Webhook URL to notify when agent completes",
     )
+    model: Optional[str] = Field(
+        default=None, 
+        description="Custom LLM model to use for the agent. Format varies by provider: "
+                    "openai: 'openai/model-name' (e.g., 'openai/gpt-4'), "
+                    "google: 'google/model-name' (e.g., 'google/gemini-pro'), "
+                    "groq: 'groq/provider/model-name' (e.g., 'groq/anthropic/claude-3.5-sonnet'). "
+                    "If not specified, uses default model."
+    )

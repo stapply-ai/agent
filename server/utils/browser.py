@@ -12,7 +12,7 @@ import aiohttp
 from dotenv import load_dotenv
 
 from browser_use import Agent, BrowserSession
-from browser_use.llm import ChatBrowserUse
+from browser_use.llm import ChatGoogle, ChatGroq, ChatBrowserUse, ChatOpenAI
 
 from anchorbrowser import Anchorbrowser
 
@@ -50,6 +50,61 @@ def generate_webhook_signature(payload: str, secret: str) -> str:
     ).hexdigest()
 
     return f"sha256={signature}"
+
+
+def get_llm_provider(model: Optional[str] = None):
+    """
+    Get the appropriate LLM provider based on the model string.
+    
+    Args:
+        model: Model string in format:
+               - "openai/model-name" (e.g., "openai/gpt-4")
+               - "google/model-name" (e.g., "google/gemini-pro")
+               - "groq/provider/model-name" (e.g., "groq/anthropic/claude-3.5-sonnet")
+               If None, returns default ChatBrowserUse()
+    
+    Returns:
+        LLM instance
+        
+    Raises:
+        ValueError: If provider is not supported or format is invalid
+    """
+    if not model:
+        return ChatBrowserUse()
+    
+    if "/" not in model:
+        raise ValueError(
+            f"Invalid model format: '{model}'. Expected format: 'provider/model-name' "
+            f"(e.g., 'openai/gpt-4', 'google/gemini-pro', 'groq/anthropic/claude-3.5-sonnet')"
+        )
+    
+    parts = model.split("/")
+    provider = parts[0].lower()
+    
+    if provider == "openai":
+        model_name = "/".join(parts[1:])
+        print(f"🤖 Using OpenAI model: {model_name}")
+        return ChatOpenAI(model=model_name)
+    elif provider == "google":
+        model_name = "/".join(parts[1:])
+        print(f"🤖 Using Google model: {model_name}")
+        return ChatGoogle(model=model_name)
+    elif provider == "groq":
+        # Groq format: groq/modelprovider/modelname
+        # We pass modelprovider/modelname to ChatGroq
+        if len(parts) < 3:
+            raise ValueError(
+                f"Invalid Groq model format: '{model}'. Expected format: 'groq/provider/model-name' "
+                f"(e.g., 'groq/anthropic/claude-3.5-sonnet')"
+            )
+        model_name = "/".join(parts[1:])
+        print(f"🤖 Using Groq model: {model_name}")
+        return ChatGroq(model=model_name)
+    else:
+        raise ValueError(
+            f"Unsupported provider: '{provider}'. "
+            f"Supported providers: openai, google, groq"
+        )
 
 
 async def send_webhook(
@@ -129,6 +184,7 @@ async def start_agent(
     instructions: str = "",
     secrets: dict = {},
     webhook_url: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> str:
     """
     Main function demonstrating Browser-Use + Playwright integration with custom actions.
@@ -167,6 +223,7 @@ async def start_agent(
             secrets,
             webhook_url,
             session_id,
+            model,
         )
     )
 
@@ -185,6 +242,7 @@ async def _run_agent_background(
     secrets: dict,
     webhook_url: Optional[str],
     session_id: str,
+    model: Optional[str] = None,
 ):
     """
     Run the agent in the background and send webhook when complete.
@@ -213,7 +271,7 @@ async def _run_agent_background(
             # dom_highlight_elements=True,
         )
 
-        llm = ChatBrowserUse()
+        llm = get_llm_provider(model)
 
         agent = Agent(
             task=prompt,
