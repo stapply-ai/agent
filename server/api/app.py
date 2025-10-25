@@ -9,8 +9,8 @@ from . import health, root, apply, exception_handlers
 
 # FastAPI application instance
 app = FastAPI(
-    title="Agent Stapply cloud server",
-    description="Agent Stapply cloud server",
+    title="Agent Stapply API",
+    description="Agent Stapply API",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
