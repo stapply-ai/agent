@@ -1,4 +1,4 @@
-# Stapply AI Agent
+# Agent Stapply
 
 This codebase contains the code to run an eval with the agent and the server that powers the cloud platform of Stapply.
 
