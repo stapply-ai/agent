@@ -50,7 +50,8 @@ RUN /root/.local/bin/uv run playwright install chromium
 FROM python-deps AS app
 
 ENV UVICORN_WORKERS=2 \
-    PORT=8080
+    PORT=8080 \
+    ENVIRONMENT=production
 
 # Copy the application code (this invalidates cache when code changes)
 COPY server /app/server
