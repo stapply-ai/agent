@@ -47,8 +47,8 @@ class ApplyRequest(BaseModel):
         default=None, description="Sensitive data to pass to the agent"
     )
     webhook_url: Optional[str] = Field(
-        default="http://localhost:3000/webhook/applications",
-        description="Webhook URL to notify when agent completes",
+        default=None,
+        description="Webhook URL to notify when agent completes. Defaults to cloud.stapply.ai in production or localhost:3000 in development.",
     )
     model: Optional[str] = Field(
         default=None, 

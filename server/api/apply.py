@@ -2,7 +2,7 @@
 Apply endpoint for job application agent.
 """
 
-from datetime import datetime
+import os
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, status
 from ..utils.profile import default_profile
@@ -10,6 +10,19 @@ from ..utils.browser import start_agent
 from .models import ApplyRequest
 
 router = APIRouter()
+
+
+def get_default_webhook_url() -> str:
+    """
+    Get the default webhook URL based on environment.
+    
+    Returns:
+        Webhook URL for the current environment
+    """
+    env = os.getenv("ENVIRONMENT", "development").lower()
+    if env == "production":
+        return "https://cloud.stapply.ai/webhook/applications"
+    return "http://localhost:3000/webhook/applications"
 
 @router.post(
     "/apply",
@@ -27,6 +40,7 @@ async def apply(request: ApplyRequest) -> Dict[str, Any]:
     """
     try:
         profile_data: Dict[str, Any] = request.profile or default_profile
+        webhook_url = request.webhook_url or get_default_webhook_url()
 
         session_id, browser_live_view_url = await start_agent(
             user_id=request.user_id,
@@ -35,7 +49,7 @@ async def apply(request: ApplyRequest) -> Dict[str, Any]:
             resume_url=request.resume_url,
             instructions=request.instructions,
             secrets=request.secrets,
-            webhook_url=request.webhook_url,
+            webhook_url=webhook_url,
             model=request.model,
         )
 
