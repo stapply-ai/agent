@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Health Status - StApply Agent API</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #fafafa;
+            color: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 680px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.5rem;
+        }
+
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: #999;
+            margin-top: 0.75rem;
+        }
+
+        .breadcrumb a {
+            color: #666;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .breadcrumb a:hover {
+            color: #1a1a1a;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 2.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 10px 40px rgba(0, 0, 0, 0.03);
+            margin-bottom: 2rem;
+        }
+
+        .status-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .status-icon {
+            width: 48px;
+            height: 48px;
+            background: #10b981;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .status-info h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #10b981;
+            margin-bottom: 0.25rem;
+        }
+
+        .status-info p {
+            font-size: 0.875rem;
+            color: #666;
+        }
+
+        .metrics {
+            display: grid;
+            gap: 1.5rem;
+        }
+
+        .metric-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: #fafafa;
+            border-radius: 12px;
+        }
+
+        .metric-label {
+            font-size: 0.875rem;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .metric-value {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+            font-size: 0.875rem;
+            color: #1a1a1a;
+            font-weight: 600;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.25rem;
+            background: white;
+            border-radius: 12px;
+            text-decoration: none;
+            color: #1a1a1a;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .back-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .back-arrow {
+            transition: transform 0.2s ease;
+        }
+
+        .back-link:hover .back-arrow {
+            transform: translateX(-4px);
+        }
+
+        .footer {
+            text-align: center;
+            color: #999;
+            font-size: 0.875rem;
+            margin-top: 2rem;
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 1.75rem;
+            }
+
+            .card {
+                padding: 1.5rem;
+            }
+
+            .status-header {
+                flex-direction: column;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>System Health</h1>
+            <div class="breadcrumb">
+                <a href="/">Home</a>
+                <span>/</span>
+                <span>Health</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="status-header">
+                <div class="status-icon">✓</div>
+                <div class="status-info">
+                    <h2>{{ status }}</h2>
+                    <p>All systems operational</p>
+                </div>
+            </div>
+
+            <div class="metrics">
+                <div class="metric-item">
+                    <span class="metric-label">API Version</span>
+                    <span class="metric-value">{{ version }}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Timestamp</span>
+                    <span class="metric-value">{{ timestamp }}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Response Time</span>
+                    <span class="metric-value">{{ response_time }}ms</span>
+                </div>
+            </div>
+        </div>
+
+        <a href="/" class="back-link">
+            <span class="back-arrow">←</span>
+            Back to Home
+        </a>
+
+        <div class="footer">
+            <p>© 2025 StApply. Built with FastAPI.</p>
+        </div>
+    </div>
+</body>
+</html>
